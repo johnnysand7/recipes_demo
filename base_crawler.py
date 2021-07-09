@@ -4,6 +4,7 @@ from urllib3.util import parse_url
 from bs4 import BeautifulSoup
 from redis import Redis
 from time import sleep
+from helpers import *
 import requests
 import certifi
 import json
@@ -33,7 +34,7 @@ class BaseCrawler():
         """
         # Ensure the download path exists
         if not os.path.isdir(download_path):
-            raise Exception('Non-existant download path')
+            raise Exception('Non-existent download path')
 
         # Set up self.start_url, self.scheme, self.domain, and self.path
         self.prepare_url(start_url)
@@ -103,9 +104,14 @@ class BaseCrawler():
                       'application/signed-exchange;v=b3;q=0.9',
             'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_2_0) '
                           'AppleWebKit/537.36 (KHTML, like Gecko) '
-                          Chrome/89.0.4389.90 Safari/537.36',
+                          'Chrome/89.0.4389.90 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9'
         }
+
+    def clear_pool_manager(self):
+        """Closes the urllib3 Pool Manager
+        """
+        self.http.clear()
 
     def get_response(self, url):
         """Download a single page using the urllib3 library

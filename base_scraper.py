@@ -142,3 +142,8 @@ class BaseScraper(metaclass=ABCMeta):
         }
         with open(f"{self.read_path}/scraper_errors.jsonl", 'a') as f:
             f.write(json.dumps(error_dict) + "\n")
+
+    def close_connection_pool(self):
+        """Closes the  Sql Pool Manager
+        """
+        self.pool_conn.closeall()

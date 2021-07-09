@@ -17,14 +17,26 @@ of ingredient lines follow specific patterns:
 {amount} {ingredient name}, {unneeded modifiers}
 ```
 
-The main challenge is account for variations like
+The main challenge is accounting for variations like
 ```
-1 1/2 cups flour # meaning '1.5 cups'
-1 1/2 pound chicken breast # meaning '0.5 pound chicken breast'
+# All meaning "1.5 cups flour":
+1 1/2 cups flour
+One and a half c flour
+1 ½c. flour
+
+# All meaning "One 0.5 pound chicken breast":
+1 1/2 pound chicken breast
+One half-lb chicken breast
+8oz chicken breast
 ```
-so the context of weight versus volume and ingredient type matters
+so the context of weight versus volume and ingredient type matters.
 
 `ingredient_parser_test.py` includes a lot of these variations.
+
+Ultimately an ingredient and volume-weight conversion table will be stored
+in PostgreSql or maybe Redis; something like 1,000 unique ingredients
+account for ~80% or more of all ingredients in a set of 100k recipes I've
+looked at, so the table will not need to be large.
 
 ---
 
@@ -37,6 +49,8 @@ more like iterating through pages.
 
 Occasionally Selenium is needed to interact with dynamic pages to click
 buttons and scroll to ensure a page loads entirely.
+
+See `epicurious.py` for an example.
 
 ---
 
@@ -53,5 +67,9 @@ Other fields that are gathered when available are:
 - `cook_time` and `prep_time`
 - `author`
 - `rating`, `rating_count`, and `make_again_percent`
+
+
+Eventually I'd like to parse ratings and add fields like ingredient counts
+to aid in searches; perhaps filtering by rating as well as recipe complexity.
 
 ---

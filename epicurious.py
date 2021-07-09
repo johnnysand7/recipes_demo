@@ -111,7 +111,7 @@ class EpicuriousCrawler(BaseCrawler):
         soup [bs4.BeautifulSoup]: soup object for the current page
         path [str]: url path for the current page
         """
-        file_name = path.lstrip('/').replace('/', '_-_')
+        file_name = url_path_to_filename(path)
         main_content = soup.select_one('div.main-content')
         if not main_content:
             print(f"Missing  'div.main-content' for {path}")
@@ -119,7 +119,7 @@ class EpicuriousCrawler(BaseCrawler):
 
         self.download_image(main_content, path, file_name)
 
-        with open(f"{self.download_path}/{file_name}.html", 'w') as f:
+        with open(f"{self.download_path}/{file_name}", 'w') as f:
             f.write(str(main_content))
 
     def download_image(self, soup, path, file_name):
@@ -402,10 +402,11 @@ class EpicuriousScraper(BaseScraper):
         if not image_block:
             return None
         image_url = image_block.get('srcset')
-        file_path = '/Users/johnny/Projects/reciplease/data/epicurious'
-        file_name = self.data['path'].lstrip('/').replace('/', '_-_')
-        file_type = image_url.split('.')[-1]
-        image_location = f"{file_path}/{file_name}.{file_type}"
+        file_path = f"{os.environ.get('PROJECT_PATH')}/data/epicurious"
+
+        img_ext = image_url.split('.')[-1]
+        file_name = url_path_to_filename(self.path, extension=img_ext)
+        image_location = f"{file_path}/{file_name}"
         if os.path.exists(image_location):
             misc['image_location'] = image_location
         misc['image_url'] = image_url
@@ -414,10 +415,10 @@ class EpicuriousScraper(BaseScraper):
 
 if __name__ == "__main__":
     start_url = 'https://www.epicurious.com/search/?page=1'
-    download_path = '/Users/johnny/Projects/reciplease/data/epicurious'
+    download_path = f"{os.environ.get('PROJECT_PATH')}/data/epicurious"
     # Only links containing one of these substrings are allowed to be followed
     allow_these = ['recipes/']
-    # Block any of these (overruling above allowed substrings)
+
     crawler = EpicuriousCrawler(start_url,
                                 download_path,
                                 allow=allow_these,
@@ -427,14 +428,14 @@ if __name__ == "__main__":
 
     pool_conn = pool.SimpleConnectionPool(1,
                                           20,
-                                          user='johnny',
-                                          database='reciplease')
+                                          user=os.environ.get('DB_USER'),
+                                          database=os.environ.get('DB_NAME'))
     # TODO: update this to use a separate thread to process recipes
     # as the crawler is running too
     for fn in os.listdir(download_path):
         if not fn.endswith('.html'):
             continue
-        url_path = fn.replace('_-_', '/').rstrip('.html')
+        url_path = filename_to_url_path(fn)
         with open(f"{download_path}/{fn}", 'r') as f:
             soup = BeautifulSoup(f.read(), features='lxml')
         scraper = EpicuriousScraper(soup,
@@ -444,3 +445,5 @@ if __name__ == "__main__":
                                     pool_conn)
         scraper.assemble_primary()
         scraper.insert_recipe()
+
+    pool_conn.closeall()
