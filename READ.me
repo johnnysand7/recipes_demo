@@ -1,0 +1,57 @@
+# Recipes
+---
+The overall goals of the project are:
+- parse recipe ingredient lines into `amount`s and clean `ingredient` names
+- convert any volume amounts to grams via a conversion table
+- crawl recipe sites and scrape recipes into a clean schema
+- convert recipes into ingredients by percent total weight
+- implement an accurate search by individual ingredients
+- create "averaged" recipes with similar titles
+
+---
+
+### Parsing
+Parsing is done entirely through regular expressions as the vast majority
+of ingredient lines follow specific patterns:
+```
+{amount} {ingredient name}, {unneeded modifiers}
+```
+
+The main challenge is account for variations like
+```
+1 1/2 cups flour # meaning '1.5 cups'
+1 1/2 pound chicken breast # meaning '0.5 pound chicken breast'
+```
+so the context of weight versus volume and ingredient type matters
+
+`ingredient_parser_test.py` includes a lot of these variations.
+
+---
+
+### Crawling and Scraping
+Crawling and scraping are both performed with Python, with the final parsed
+data stored in PostgreSql.
+
+Most recipe sites have indexes or nice search pages, so crawling is often
+more like iterating through pages.
+
+Occasionally Selenium is needed to interact with dynamic pages to click
+buttons and scroll to ensure a page loads entirely.
+
+---
+
+### Example Schema
+
+The main components to collect are:
+- `title`
+- `ingredients`
+- `instructions`
+
+Other fields that are gathered when available are:
+- `image`
+- `description`
+- `cook_time` and `prep_time`
+- `author`
+- `rating`, `rating_count`, and `make_again_percent`
+
+---
