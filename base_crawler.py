@@ -30,7 +30,14 @@ class BaseCrawler():
         ignore_links bool]: only download the in_progress urls, without
             looking for more links
         limit [int]: total pages to download before stopping
-        image_css [str]: css path to a recipe's image
+        path_pattern [regex str]: url path matching a recipe page (mostly for
+            true crawling rather than a search/directed crawl)
+        html_function [function]: externally defined method looking for the
+            presence of an html element on the page; exclusively called
+            with the bs4.BeautifulSoup object of the page in question
+            Will primarily be used if `path_pattern` cannot be
+        image_css [str]: css path to a recipe's image tag
+        image_att [str]: img tag attribute to pull out the url
         """
         # Ensure the download path exists
         if not os.path.isdir(download_path):
@@ -47,6 +54,14 @@ class BaseCrawler():
         self.avoid = kwargs.get('avoid', [])
         self.find_more_links = kwargs.get('find_more_links', True)
         self.limit = kwargs.get('limit', 1000)
+        # For determining if a page is a recipe or not
+        self.path_pattern = kwargs.get('path_pattern', None)
+        self.html_function = kwargs.get('html_function', None)
+        # Handing images on recipe pages; if one is present, the other
+        # must be too
+        self.image_css = kwargs.get('image_css', None)
+        self.image_att = kwargs.get('image_att', None)
+
         self.page_count = 0
         self.setup_pool_manager_headers()
 
@@ -148,9 +163,6 @@ class BaseCrawler():
         if r.scard(self.rkey(0)) == 0:
             r.sadd(self.rkey(0), self.path)
         while r.scard(self.rkey(0)) > 0:
-            # Every 10 pages, count the number of in progress records
-            if self.page_count % 10 == 0:
-                r.rpush(self.rkey(3), r.scard(self.rkey(0)))
 
             next_path = r.srandmember(self.rkey(0)).decode()
             current_url = f"{self.base_url}{next_path}"
@@ -176,7 +188,7 @@ class BaseCrawler():
             if self.find_more_links:
                 self.add_links(soup)
             self.download_page(html, next_path)
-            self.complete_page(next_path)
+            self.complete_page(soup, next_path)
             print(f"Completed download of {next_path}")
 
             if self.page_count >= self.limit:
@@ -203,10 +215,10 @@ class BaseCrawler():
         if not new_path:
             # This has never happend but just in case
             raise Exception('Missing redirected URL')
-        # Remove the old path from in_progess and add to finished
+        # Remove the old path from 'in_progess' and add to 'finished'
         r.srem(self.rkey(0), old_path)
         r.sadd(self.rkey(1), old_path)
-        # Add the new one to in_progress
+        # Add the new one to 'in_progress'
         r.sadd(self.rkey(0), new_path)
 
         return new_path
@@ -306,7 +318,7 @@ class BaseCrawler():
         """Skip a found link if:
         - too long
         - external domain
-        - already 'finished' or 'errored'
+        - already 'finished', 'errored', or 'to_scrape'
         - marked to avoid
         - potentially messy like 'htt' within the path
 
@@ -324,6 +336,7 @@ class BaseCrawler():
             not self.same_domains(link_domain) or\
             r.sismember(self.rkey(1), link_path) or\
             r.sismember(self.rkey(2), link_path) or\
+            r.sismember(self.rkey(3), link_path) or\
             self.avoid_link(link_path) or\
             self.messy_path(link_path)
 
@@ -367,35 +380,84 @@ class BaseCrawler():
         html [str]: result of response.data; html of the current page
         path [str]: path of the current page; used as file name
         """
-        file_name = path.lstrip('/').replace('/', '_-_')
-        with open(f'{self.download_path}/{file_name}.html', 'w') as f:
+        file_name = url_path_to_filename(path)
+        with open(f'{self.download_path}/{file_name}', 'w') as f:
             if type(html) == bytes:
                 f.write(html.decode())
             else:
                 f.write(html)
 
-    def download_image(self, image_url, file_name):
+    def download_image(self, soup, next_path):
         """Download a recipe's image if image_css is provided
         Keep the file name the same as the recipe path and write
         as the same image type as listed on the url
 
+        Ideally this will be called before the scraper so the recipe's image
+        will already be downloaded.
+
         Parameters
         ----------
+        url_path [str]: path of the current url
         image_url [str]: url pulled out of an 'src' or 'srcset' attribute
-        file_name [str]: derived from the path of the recipe
-        """
-        file_type = image_url.split('.')[-1]
-        img = self.get_response(image_url)
 
-        with open(f'{self.download_path}/{file_name}.{file_type}', 'wb') as f:
+        Returns
+        -------
+        None; saves the image to file if found
+        """
+        # Only proceed if info about image location has been provided
+        if not self.image_css:
+            return None
+
+        img_tag = soup.select_one(self.image_css)
+        if not img_tag:
+            return None
+
+        image_url = img_tag.get(self.image_att, None)
+        if not image_url:
+            # TODO: error/note when a tag is found but not the attribute?
+            return None
+
+        img = self.get_response(image_url)
+        if not img:
+            return None
+
+        img_ext = image_url.split('.')[-1]
+        file_name = url_path_to_filename(next_path, extension=img_ext)
+
+        with open(f"{self.download_path}/{file_name}", 'wb') as f:
             f.write(img.data)
 
-    def complete_page(self, next_path):
+    def scrapable_page(self, soup, next_path):
+        """Whether or not the current page is a recipe site, matching
+        either a regex path pattern and/or html
+        """
+        if not self.path_pattern and not self.html_function:
+            return False
+
+        path_match = None
+        if self.path_pattern:
+            path_match = re.search(self.path_pattern, next_path, flags=re.I)
+
+        html_match = None
+        if self.html_function:
+            html_match = self.html_function(soup)
+
+        # One or the other should be enough to decide
+        return path_match or html_match
+
+    def complete_page(self, soup, next_path):
         """Increment the page count, add the current path to the
         success set, and remove it from the in progress set
         """
         self.page_count += 1
-        r.sadd(self.rkey(1), next_path)
+        if self.scrapable_page(soup, next_path):
+            # Add to the `to_scrape` set
+            r.sadd(self.rkey(3), next_path)
+            # Attempt to download the recipe image for this page
+            self.download_image(soup, next_path)
+        else:
+            # Add to the `finished` set
+            r.sadd(self.rkey(1), next_path)
         r.srem(self.rkey(0), next_path)
 
     def log_crawler_error(self, path, error, note=None):
@@ -416,7 +478,12 @@ class BaseCrawler():
 
     def rkey(self, part_index):
         """Redis key: combine domain with 'in_progress', 'finished',
-        or 'errored'
+        'errored', or 'to_scrape'
         """
-        parts = ['in_progress', 'finished', 'errored', 'count']
+        parts = [
+            'in_progress',
+            'finished',
+            'errored',
+            'to_scrape'
+        ]
         return f"{self.domain}:{parts[part_index]}"
