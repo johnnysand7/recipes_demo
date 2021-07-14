@@ -13,20 +13,6 @@ def return_details(ingredient, table_rows=[]):
     return parser.parse()
 
 
-def test_parsing(ingredient, **kwargs):
-    expected_cleaned = kwargs.get('cleaned')
-    expected_volume = kwargs.get('volume')
-    expected_weight = kwargs.get('weight')
-
-    details = return_details(ingredient)
-    if expected_cleaned:
-        self.assertEqual(details['cleaned'], expected_cleaned)
-    if expected_volume:
-        self.assertEqual(details['volume'], expected_volume)
-    if expected_weight:
-        self.assertEqual(details['weight'], expected_weight)
-
-
 class TestStringCleaning(unittest.TestCase):
     """Tests for cleaning strings"""
 

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import patch
 from bs4 import BeautifulSoup
 from epicurious import *
 import unittest
@@ -22,9 +22,10 @@ def as_soup(input):
         # Input is a urllib3 response
         return BeautifulSoup(input.data, features='lxml')
 
-
+@unittest.skip('Manually run to avoid excessive downloads')
 class TestSinglePageDownload(unittest.TestCase):
-    """Download a sinlge test page
+    """Download a sinlge test page and check important elements
+    to ensure the layout has not changed since the last crawl
     """
 
     def setUp(self):
@@ -44,7 +45,6 @@ class TestSinglePageDownload(unittest.TestCase):
         """
         self.crawl_one.clear_pool_manager()
 
-    @unittest.skip('Manually run to avoid excessive downloads')
     def test_large_page(self):
         response = self.crawl_one.get_response(self.url)
 
